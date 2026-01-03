@@ -1,0 +1,7 @@
+{
+  "name": "Keep Clone PWA",
+  "description": "A mobile-first Google Keep clone with PWA capabilities, local storage persistence, and AI-powered note refinement.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
