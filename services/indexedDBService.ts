@@ -7,136 +7,77 @@ interface SyncOperation {
   timestamp: number;
 }
 
-class IndexedDBService {
-  private db: IDBDatabase | null = null;
-  private readonly dbName = 'keep-clone-db';
-  private readonly version = 1;
+class LocalStorageService {
+  private readonly notesKey = 'keep-clone-notes';
+  private readonly syncQueueKey = 'keep-clone-sync-queue';
 
-  async init(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      console.log('Initializing IndexedDB');
-      const request = indexedDB.open(this.dbName, this.version);
-
-      request.onerror = () => {
-        console.error('IndexedDB init failed:', request.error);
-        reject(request.error);
-      };
-      request.onsuccess = () => {
-        this.db = request.result;
-        console.log('IndexedDB initialized successfully');
-        resolve();
-      };
-
-      request.onupgradeneeded = (event) => {
-        console.log('IndexedDB upgrade needed');
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains('notes')) {
-          db.createObjectStore('notes', { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains('sync-queue')) {
-          db.createObjectStore('sync-queue', { keyPath: 'id', autoIncrement: true });
-        }
-      };
-    });
+  getAllNotes(): Note[] {
+    console.log('Getting all notes from localStorage');
+    try {
+      const data = localStorage.getItem(this.notesKey);
+      const notes = data ? JSON.parse(data) : [];
+      console.log('Retrieved', notes.length, 'notes');
+      return notes.sort((a: Note, b: Note) => b.createdAt - a.createdAt);
+    } catch (error) {
+      console.error('Failed to get notes from localStorage:', error);
+      return [];
+    }
   }
 
-  private ensureDB(): IDBDatabase {
-    if (!this.db) throw new Error('IndexedDB not initialized');
-    return this.db;
+  saveNote(note: Note): void {
+    console.log('Saving note to localStorage:', note.id);
+    try {
+      const notes = this.getAllNotes();
+      const existingIndex = notes.findIndex(n => n.id === note.id);
+      if (existingIndex >= 0) {
+        notes[existingIndex] = note;
+      } else {
+        notes.push(note);
+      }
+      localStorage.setItem(this.notesKey, JSON.stringify(notes));
+      console.log('Note saved successfully');
+    } catch (error) {
+      console.error('Failed to save note to localStorage:', error);
+    }
   }
 
-  async getAllNotes(): Promise<Note[]> {
-    console.log('Getting all notes from IndexedDB');
-    await this.init();
-    const db = this.ensureDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(['notes'], 'readonly');
-      const store = transaction.objectStore('notes');
-      const request = store.getAll();
-
-      request.onsuccess = () => {
-        const notes = request.result.sort((a: Note, b: Note) => b.createdAt - a.createdAt);
-        console.log('Retrieved', notes.length, 'notes');
-        resolve(notes);
-      };
-      request.onerror = () => {
-        console.error('Failed to get notes:', request.error);
-        reject(request.error);
-      };
-    });
+  deleteNote(id: string): void {
+    try {
+      const notes = this.getAllNotes().filter(n => n.id !== id);
+      localStorage.setItem(this.notesKey, JSON.stringify(notes));
+    } catch (error) {
+      console.error('Failed to delete note from localStorage:', error);
+    }
   }
 
-  async saveNote(note: Note): Promise<void> {
-    console.log('Saving note to IndexedDB:', note.id);
-    await this.init();
-    const db = this.ensureDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(['notes'], 'readwrite');
-      const store = transaction.objectStore('notes');
-      const request = store.put(note);
-
-      request.onsuccess = () => {
-        console.log('Note saved successfully');
-        resolve();
-      };
-      request.onerror = () => {
-        console.error('Failed to save note:', request.error);
-        reject(request.error);
-      };
-    });
+  addToSyncQueue(operation: SyncOperation): void {
+    try {
+      const queue = this.getSyncQueue();
+      operation.id = Date.now(); // Simple ID
+      queue.push(operation);
+      localStorage.setItem(this.syncQueueKey, JSON.stringify(queue));
+    } catch (error) {
+      console.error('Failed to add to sync queue:', error);
+    }
   }
 
-  async deleteNote(id: string): Promise<void> {
-    await this.init();
-    const db = this.ensureDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(['notes'], 'readwrite');
-      const store = transaction.objectStore('notes');
-      const request = store.delete(id);
-
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
+  getSyncQueue(): SyncOperation[] {
+    try {
+      const data = localStorage.getItem(this.syncQueueKey);
+      return data ? JSON.parse(data) : [];
+    } catch (error) {
+      console.error('Failed to get sync queue:', error);
+      return [];
+    }
   }
 
-  async addToSyncQueue(operation: SyncOperation): Promise<void> {
-    await this.init();
-    const db = this.ensureDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(['sync-queue'], 'readwrite');
-      const store = transaction.objectStore('sync-queue');
-      const request = store.add(operation);
-
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async getSyncQueue(): Promise<SyncOperation[]> {
-    await this.init();
-    const db = this.ensureDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(['sync-queue'], 'readonly');
-      const store = transaction.objectStore('sync-queue');
-      const request = store.getAll();
-
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async clearSyncQueue(): Promise<void> {
-    await this.init();
-    const db = this.ensureDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(['sync-queue'], 'readwrite');
-      const store = transaction.objectStore('sync-queue');
-      const request = store.clear();
-
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
+  clearSyncQueue(): void {
+    try {
+      localStorage.removeItem(this.syncQueueKey);
+    } catch (error) {
+      console.error('Failed to clear sync queue:', error);
+    }
   }
 }
 
-export const indexedDBService = new IndexedDBService();
+export const indexedDBService = new LocalStorageService();
