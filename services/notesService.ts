@@ -15,13 +15,18 @@ const isOnline = () => navigator.onLine;
 
 // Sync notes from IndexedDB to Supabase
 const syncToSupabase = async () => {
-  if (!isSupabaseConfigured() || !isOnline()) return;
+  if (!isSupabaseConfigured() || !isOnline()) {
+    console.log('Sync to Supabase skipped: configured?', isSupabaseConfigured(), 'online?', isOnline());
+    return;
+  }
 
   try {
     const queue = await indexedDBService.getSyncQueue();
+    console.log('Syncing queue:', queue.length, 'operations');
     for (const op of queue) {
       switch (op.operation) {
         case 'create':
+          console.log('Creating note in Supabase:', op.data.id);
           await supabase.from('notes').insert([{
             id: op.data.id,
             title: op.data.title,
@@ -31,6 +36,7 @@ const syncToSupabase = async () => {
           }]);
           break;
         case 'update':
+          console.log('Updating note in Supabase:', op.data.id);
           await supabase.from('notes').update({
             title: op.data.title,
             content: op.data.content,
@@ -39,11 +45,13 @@ const syncToSupabase = async () => {
           }).eq('id', op.data.id);
           break;
         case 'delete':
+          console.log('Deleting note in Supabase:', op.data);
           await supabase.from('notes').delete().eq('id', op.data);
           break;
       }
     }
     await indexedDBService.clearSyncQueue();
+    console.log('Sync to Supabase completed');
   } catch (error) {
     console.error('Sync to Supabase failed:', error);
   }
@@ -51,9 +59,13 @@ const syncToSupabase = async () => {
 
 // Sync notes from Supabase to IndexedDB
 const syncFromSupabase = async () => {
-  if (!isSupabaseConfigured() || !isOnline()) return;
+  if (!isSupabaseConfigured() || !isOnline()) {
+    console.log('Sync from Supabase skipped: configured?', isSupabaseConfigured(), 'online?', isOnline());
+    return;
+  }
 
   try {
+    console.log('Fetching notes from Supabase');
     const { data, error } = await supabase
       .from('notes')
       .select('*')
@@ -70,16 +82,21 @@ const syncFromSupabase = async () => {
       updatedAt: new Date(note.updated_at).getTime(),
     }));
 
+    console.log('Fetched', supabaseNotes.length, 'notes from Supabase');
+
     // Merge Supabase notes with local notes
     const localNotes = await indexedDBService.getAllNotes();
+    console.log('Local notes:', localNotes.length);
     const localMap = new Map(localNotes.map(n => [n.id, n]));
 
     for (const note of supabaseNotes) {
       const local = localMap.get(note.id);
       if (!local || note.updatedAt > local.updatedAt) {
+        console.log('Saving/Updating note:', note.id);
         await indexedDBService.saveNote(note);
       }
     }
+    console.log('Sync from Supabase completed');
   } catch (error) {
     console.error('Sync from Supabase failed:', error);
   }
@@ -116,6 +133,7 @@ export const notesService = {
     // If online and configured, try to sync to Supabase
     if (isSupabaseConfigured() && isOnline()) {
       try {
+        console.log('Inserting note to Supabase:', newNote.id);
         await supabase.from('notes').insert([{
           id: newNote.id,
           title: newNote.title,
@@ -123,6 +141,7 @@ export const notesService = {
           color: newNote.color,
           created_at: new Date(newNote.createdAt).toISOString(),
         }]);
+        console.log('Inserted successfully');
       } catch (error) {
         console.error('Error syncing create to Supabase, queuing:', error);
         await indexedDBService.addToSyncQueue({
@@ -133,6 +152,7 @@ export const notesService = {
       }
     } else if (isSupabaseConfigured()) {
       // Offline, queue for later
+      console.log('Offline, queuing create for later');
       await indexedDBService.addToSyncQueue({
         operation: 'create',
         data: newNote,
