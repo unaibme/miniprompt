@@ -151,6 +151,18 @@ const App: React.FC = () => {
     }
   };
 
+  const handleSync = async () => {
+    try {
+      await notesService.syncPendingOperations();
+      const updatedNotes = await notesService.getAllNotes();
+      setNotes(updatedNotes);
+      showToast("Notes synced successfully");
+    } catch (error) {
+      console.error('Error syncing:', error);
+      showToast("Failed to sync notes");
+    }
+  };
+
   const openEditModal = (note: Note) => {
     setEditingNote(note);
     setIsCreateModalOpen(true);
@@ -170,7 +182,7 @@ const App: React.FC = () => {
             You are offline. Changes will sync when online.
           </div>
         )}
-        <Header searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+        <Header searchQuery={searchQuery} setSearchQuery={setSearchQuery} onSync={handleSync} />
 
         <CreateNote
           isOpen={isCreateModalOpen}
