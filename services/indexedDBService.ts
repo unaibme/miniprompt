@@ -14,15 +14,21 @@ class IndexedDBService {
 
   async init(): Promise<void> {
     return new Promise((resolve, reject) => {
+      console.log('Initializing IndexedDB');
       const request = indexedDB.open(this.dbName, this.version);
 
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        console.error('IndexedDB init failed:', request.error);
+        reject(request.error);
+      };
       request.onsuccess = () => {
         this.db = request.result;
+        console.log('IndexedDB initialized successfully');
         resolve();
       };
 
       request.onupgradeneeded = (event) => {
+        console.log('IndexedDB upgrade needed');
         const db = (event.target as IDBOpenDBRequest).result;
         if (!db.objectStoreNames.contains('notes')) {
           db.createObjectStore('notes', { keyPath: 'id' });
@@ -40,6 +46,7 @@ class IndexedDBService {
   }
 
   async getAllNotes(): Promise<Note[]> {
+    console.log('Getting all notes from IndexedDB');
     await this.init();
     const db = this.ensureDB();
     return new Promise((resolve, reject) => {
@@ -49,13 +56,18 @@ class IndexedDBService {
 
       request.onsuccess = () => {
         const notes = request.result.sort((a: Note, b: Note) => b.createdAt - a.createdAt);
+        console.log('Retrieved', notes.length, 'notes');
         resolve(notes);
       };
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        console.error('Failed to get notes:', request.error);
+        reject(request.error);
+      };
     });
   }
 
   async saveNote(note: Note): Promise<void> {
+    console.log('Saving note to IndexedDB:', note.id);
     await this.init();
     const db = this.ensureDB();
     return new Promise((resolve, reject) => {
@@ -63,8 +75,14 @@ class IndexedDBService {
       const store = transaction.objectStore('notes');
       const request = store.put(note);
 
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        console.log('Note saved successfully');
+        resolve();
+      };
+      request.onerror = () => {
+        console.error('Failed to save note:', request.error);
+        reject(request.error);
+      };
     });
   }
 
