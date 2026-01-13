@@ -5,8 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 
 // Check if Supabase is properly configured
 const isSupabaseConfigured = () => {
-  const url = import.meta.env.VITE_SUPABASE_URL || '';
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  const url = import.meta.env?.VITE_SUPABASE_URL || '';
+  const key = import.meta.env?.VITE_SUPABASE_ANON_KEY || '';
   const configured = url && key && !url.includes('placeholder') && !key.includes('placeholder');
   console.log('Supabase configured:', configured, 'URL:', url, 'Key length:', key.length);
   return configured;
