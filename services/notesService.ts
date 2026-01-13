@@ -23,7 +23,7 @@ const syncToSupabase = async () => {
   }
 
   try {
-    const queue = indexedDBService.getSyncQueue();
+    const queue = await indexedDBService.getSyncQueue();
     console.log('Syncing queue:', queue.length, 'operations');
     for (const op of queue) {
       switch (op.operation) {
@@ -52,7 +52,7 @@ const syncToSupabase = async () => {
           break;
       }
     }
-    indexedDBService.clearSyncQueue();
+    await indexedDBService.clearSyncQueue();
     console.log('Sync to Supabase completed');
   } catch (error) {
     console.error('Sync to Supabase failed:', error);
@@ -87,7 +87,7 @@ const syncFromSupabase = async () => {
     console.log('Fetched', supabaseNotes.length, 'notes from Supabase');
 
     // Merge Supabase notes with local notes
-    const localNotes = indexedDBService.getAllNotes();
+    const localNotes = await indexedDBService.getAllNotes();
     console.log('Local notes:', localNotes.length);
     const localMap = new Map(localNotes.map(n => [n.id, n]));
 
@@ -95,7 +95,7 @@ const syncFromSupabase = async () => {
       const local = localMap.get(note.id);
       if (!local || note.updatedAt > local.updatedAt) {
         console.log('Saving/Updating note:', note.id);
-        indexedDBService.saveNote(note);
+        await indexedDBService.saveNote(note);
       }
     }
     console.log('Sync from Supabase completed');
@@ -107,14 +107,14 @@ const syncFromSupabase = async () => {
 export const notesService = {
   // Fetch all notes for the current user
   async getAllNotes(): Promise<Note[]> {
-    // Always load from localStorage first
-    let notes = indexedDBService.getAllNotes();
+    // Always load from IndexedDB first
+    let notes = await indexedDBService.getAllNotes();
 
     // If online and configured, sync pending operations first, then sync from Supabase
     if (isSupabaseConfigured() && isOnline()) {
       await syncToSupabase();
       await syncFromSupabase();
-      notes = indexedDBService.getAllNotes();
+      notes = await indexedDBService.getAllNotes();
     }
 
     return notes;
@@ -129,8 +129,8 @@ export const notesService = {
       updatedAt: Date.now(),
     };
 
-    // Save to localStorage immediately
-    indexedDBService.saveNote(newNote);
+    // Save to IndexedDB immediately
+    await indexedDBService.saveNote(newNote);
 
     // If online and configured, try to sync to Supabase
     if (isSupabaseConfigured() && isOnline()) {
@@ -146,7 +146,7 @@ export const notesService = {
         console.log('Inserted successfully');
       } catch (error) {
         console.error('Error syncing create to Supabase, queuing:', error);
-        indexedDBService.addToSyncQueue({
+        await indexedDBService.addToSyncQueue({
           operation: 'create',
           data: newNote,
           timestamp: Date.now(),
@@ -155,7 +155,7 @@ export const notesService = {
     } else if (isSupabaseConfigured()) {
       // Offline, queue for later
       console.log('Offline, queuing create for later');
-      indexedDBService.addToSyncQueue({
+      await indexedDBService.addToSyncQueue({
         operation: 'create',
         data: newNote,
         timestamp: Date.now(),
@@ -167,7 +167,7 @@ export const notesService = {
 
   // Update an existing note
   async updateNote(id: string, note: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>): Promise<Note | null> {
-    const existingNotes = indexedDBService.getAllNotes();
+    const existingNotes = await indexedDBService.getAllNotes();
     const existingNote = existingNotes.find(n => n.id === id);
     if (!existingNote) return null;
 
@@ -178,8 +178,8 @@ export const notesService = {
       updatedAt: Date.now(),
     };
 
-    // Save to localStorage immediately
-    indexedDBService.saveNote(updatedNote);
+    // Save to IndexedDB immediately
+    await indexedDBService.saveNote(updatedNote);
 
     // If online and configured, try to sync to Supabase
     if (isSupabaseConfigured() && isOnline()) {
@@ -192,7 +192,7 @@ export const notesService = {
         }).eq('id', id);
       } catch (error) {
         console.error('Error syncing update to Supabase, queuing:', error);
-        indexedDBService.addToSyncQueue({
+        await indexedDBService.addToSyncQueue({
           operation: 'update',
           data: updatedNote,
           timestamp: Date.now(),
@@ -200,7 +200,7 @@ export const notesService = {
       }
     } else if (isSupabaseConfigured()) {
       // Offline, queue for later
-      indexedDBService.addToSyncQueue({
+      await indexedDBService.addToSyncQueue({
         operation: 'update',
         data: updatedNote,
         timestamp: Date.now(),
@@ -212,8 +212,8 @@ export const notesService = {
 
   // Delete a note
   async deleteNote(id: string): Promise<boolean> {
-    // Delete from localStorage immediately
-    indexedDBService.deleteNote(id);
+    // Delete from IndexedDB immediately
+    await indexedDBService.deleteNote(id);
 
     // If online and configured, try to sync to Supabase
     if (isSupabaseConfigured() && isOnline()) {
@@ -221,7 +221,7 @@ export const notesService = {
         await supabase.from('notes').delete().eq('id', id);
       } catch (error) {
         console.error('Error syncing delete to Supabase, queuing:', error);
-        indexedDBService.addToSyncQueue({
+        await indexedDBService.addToSyncQueue({
           operation: 'delete',
           data: id,
           timestamp: Date.now(),
@@ -229,7 +229,7 @@ export const notesService = {
       }
     } else if (isSupabaseConfigured()) {
       // Offline, queue for later
-      indexedDBService.addToSyncQueue({
+      await indexedDBService.addToSyncQueue({
         operation: 'delete',
         data: id,
         timestamp: Date.now(),
@@ -241,7 +241,7 @@ export const notesService = {
 
   // Update note color
   async updateNoteColor(id: string, color: string): Promise<boolean> {
-    const notes = indexedDBService.getAllNotes();
+    const notes = await indexedDBService.getAllNotes();
     const existingNote = notes.find(n => n.id === id);
     if (!existingNote) return false;
 
@@ -251,8 +251,8 @@ export const notesService = {
       updatedAt: Date.now(),
     };
 
-    // Save to localStorage immediately
-    indexedDBService.saveNote(updatedNote);
+    // Save to IndexedDB immediately
+    await indexedDBService.saveNote(updatedNote);
 
     // If online and configured, try to sync to Supabase
     if (isSupabaseConfigured() && isOnline()) {
@@ -263,7 +263,7 @@ export const notesService = {
         }).eq('id', id);
       } catch (error) {
         console.error('Error syncing color update to Supabase, queuing:', error);
-        indexedDBService.addToSyncQueue({
+        await indexedDBService.addToSyncQueue({
           operation: 'update',
           data: updatedNote,
           timestamp: Date.now(),
@@ -271,7 +271,7 @@ export const notesService = {
       }
     } else if (isSupabaseConfigured()) {
       // Offline, queue for later
-      indexedDBService.addToSyncQueue({
+      await indexedDBService.addToSyncQueue({
         operation: 'update',
         data: updatedNote,
         timestamp: Date.now(),
@@ -300,7 +300,7 @@ export const notesService = {
       if (isOnline()) {
         try {
           await syncFromSupabase();
-          const notes = indexedDBService.getAllNotes();
+          const notes = await indexedDBService.getAllNotes();
           callback(notes);
         } catch (error) {
           console.error('Error polling for notes:', error);
@@ -309,8 +309,8 @@ export const notesService = {
     }, 10000); // 10 seconds
 
     // Initial sync
-    syncFromSupabase().then(() => {
-      const notes = indexedDBService.getAllNotes();
+    syncFromSupabase().then(async () => {
+      const notes = await indexedDBService.getAllNotes();
       callback(notes);
     }).catch(error => console.error('Error initial sync:', error));
 
