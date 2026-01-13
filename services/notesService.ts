@@ -287,39 +287,36 @@ export const notesService = {
     await syncToSupabase();
   },
 
-  // Subscribe to real-time changes
+  // Subscribe to changes (using polling since real-time may not be enabled)
   subscribeToNotes(callback: (notes: Note[]) => void) {
-    // Only subscribe to Supabase real-time if configured
+    // Only poll if Supabase is configured
     if (!isSupabaseConfigured()) {
       // Return a no-op unsubscribe function
       return () => {};
     }
 
-    try {
-      const channel = supabase
-        .channel('notes-changes')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'notes',
-          },
-          async () => {
-            // Refetch all notes when any change occurs
-            const notes = await this.getAllNotes();
-            callback(notes);
-          }
-        )
-        .subscribe();
+    // Poll every 10 seconds for changes
+    const intervalId = setInterval(async () => {
+      if (isOnline()) {
+        try {
+          await syncFromSupabase();
+          const notes = indexedDBService.getAllNotes();
+          callback(notes);
+        } catch (error) {
+          console.error('Error polling for notes:', error);
+        }
+      }
+    }, 10000); // 10 seconds
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    } catch (error) {
-      console.error('Error setting up real-time subscription:', error);
-      return () => {};
-    }
+    // Initial sync
+    syncFromSupabase().then(() => {
+      const notes = indexedDBService.getAllNotes();
+      callback(notes);
+    }).catch(error => console.error('Error initial sync:', error));
+
+    return () => {
+      clearInterval(intervalId);
+    };
   },
 };
 
