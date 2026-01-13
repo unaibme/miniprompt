@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { indexedDBService } from './indexedDBService';
 import { Note } from '../types';
+import { v4 as uuidv4 } from 'uuid';
 
 // Check if Supabase is properly configured
 const isSupabaseConfigured = () => {
@@ -34,7 +35,7 @@ const syncToSupabase = async () => {
             title: op.data.title,
             content: op.data.content,
             color: op.data.color,
-            updated_at: new Date().toISOString(),
+            updated_at: new Date(op.data.updatedAt).toISOString(),
           }).eq('id', op.data.id);
           break;
         case 'delete':
@@ -66,15 +67,18 @@ const syncFromSupabase = async () => {
       content: note.content,
       color: note.color,
       createdAt: new Date(note.created_at).getTime(),
+      updatedAt: new Date(note.updated_at).getTime(),
     }));
 
-    // Clear IndexedDB and save Supabase notes
+    // Merge Supabase notes with local notes
     const localNotes = await indexedDBService.getAllNotes();
-    for (const note of localNotes) {
-      await indexedDBService.deleteNote(note.id);
-    }
+    const localMap = new Map(localNotes.map(n => [n.id, n]));
+
     for (const note of supabaseNotes) {
-      await indexedDBService.saveNote(note);
+      const local = localMap.get(note.id);
+      if (!local || note.updatedAt > local.updatedAt) {
+        await indexedDBService.saveNote(note);
+      }
     }
   } catch (error) {
     console.error('Sync from Supabase failed:', error);
@@ -87,8 +91,9 @@ export const notesService = {
     // Always load from IndexedDB first
     let notes = await indexedDBService.getAllNotes();
 
-    // If online and configured, sync from Supabase
+    // If online and configured, sync pending operations first, then sync from Supabase
     if (isSupabaseConfigured() && isOnline()) {
+      await syncToSupabase();
       await syncFromSupabase();
       notes = await indexedDBService.getAllNotes();
     }
@@ -97,11 +102,12 @@ export const notesService = {
   },
 
   // Create a new note
-  async createNote(note: Omit<Note, 'id' | 'createdAt'>): Promise<Note | null> {
+  async createNote(note: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>): Promise<Note | null> {
     const newNote: Note = {
       ...note,
-      id: Math.random().toString(36).substr(2, 9),
+      id: uuidv4(),
       createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
 
     // Save to IndexedDB immediately
@@ -138,11 +144,16 @@ export const notesService = {
   },
 
   // Update an existing note
-  async updateNote(id: string, note: Omit<Note, 'id' | 'createdAt'>): Promise<Note | null> {
+  async updateNote(id: string, note: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>): Promise<Note | null> {
+    const existingNotes = await indexedDBService.getAllNotes();
+    const existingNote = existingNotes.find(n => n.id === id);
+    if (!existingNote) return null;
+
     const updatedNote: Note = {
       id,
       ...note,
-      createdAt: Date.now(), // Update timestamp
+      createdAt: existingNote.createdAt,
+      updatedAt: Date.now(),
     };
 
     // Save to IndexedDB immediately
@@ -215,7 +226,7 @@ export const notesService = {
     const updatedNote: Note = {
       ...existingNote,
       color,
-      createdAt: Date.now(), // Update timestamp
+      updatedAt: Date.now(),
     };
 
     // Save to IndexedDB immediately

@@ -4,6 +4,7 @@ export interface Note {
   content: string;
   color: string;
   createdAt: number;
+  updatedAt: number;
 }
 
 export enum NoteColor {
